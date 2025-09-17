@@ -45,7 +45,7 @@ class Lodingscreen extends StatelessWidget{
           Image.asset('assets/img/blackpink1.jpeg'),
           SizedBox(height: 90.0,),
           Text(
-            '제니 보면서 기다려',
+            'JENNIE',
             style: TextStyle(
                 color: Colors.white,
                 fontSize: 20.0,
