@@ -1,0 +1,1001 @@
+from tkinter import*
+from PIL import Image, ImageTk
+import time
+import random
+
+class moving:
+    def __init__(self,canvas,img_id):
+        self.image_item=img_id
+        self.canvas=canvas
+    
+    def ready_move(self,ev):
+        self.startx=ev.x
+        self.starty=ev.y
+    def drag_move(self,ev):
+        self.deltax=ev.x-self.startx
+        self.deltay=ev.y-self.starty
+
+        self.canvas.move(self.image_item,self.deltax,self.deltay)
+        self.startx=ev.x
+        self.starty=ev.y
+        
+class chip(moving):
+    coord_list=[0,0,0,0]
+    shape_id=None
+    now_tag_dic={}
+    player_betting_amount=0
+    banker_betting_amount=0
+    tie_betting_amount=0
+    player_pair_betting_amount=0
+    banker_pair_betting_amount=0
+    pl_list=[]
+    ban_list=[]
+    tie_list=[]
+    pp_list=[]
+    bp_list=[]
+    seed_money=30000000
+    total_betting=0
+    dealing_start=False
+    value_dic={"5K":5000,
+               "20K":20000,
+               "100K":100000,
+               "200K":200000,
+               "1M":1000000,
+               "5M":5000000,
+               "20M":20000000}
+    stop_sit=False
+    x=0
+    y=0
+
+    def __init__(self,canvas,img,x,y,value,b):
+        self.img=img #Photoimage 객체
+        self.tag_list=[]
+        self.canvas=canvas
+        self.bacara=b
+        self.img_width=self.img.width()
+        self.img_height=self.img.height()
+
+        self.information_dic=None
+        self.chip_obj_dic=None
+        self.tag_list.append(value)
+        self.clic_cnt=0
+        self.numero=2
+        
+        image_item=self.canvas.create_image(x,y,image=self.img,tags=value) #칩마다 태그를 지정해준다. 나중에 칩에 해당하는 값을 계산할 때 씀
+        self.x1=None
+        self.y1=None
+        self.x2=None
+        self.y2=None
+        super().__init__(canvas,image_item)
+
+    def ready_move(self,ev):
+        if chip.dealing_start==True or chip.stop_sit==True:
+            return
+        
+        x=ev.x
+        y=ev.y
+        teduri=4
+        self.clic_cnt+=1
+        self.shape=list(self.canvas.find_overlapping(x-30,y-30,x+30,y+30)) #마우스에 잡혀 들어온 도형들의 아이디를 리스트 형태로 저장
+        self.shape.reverse() #리스트 뒤집기        
+        self.filtered=[]
+        self.filtered_item=[]
+        self.fi=[id for id in self.shape if id>10 and "teduri" not in self.canvas.gettags(id)]#칩 이미지 아이디만 골라서 저장
+        #print(self.fi)
+
+        for item in self.fi:
+            bbox=self.canvas.bbox(item)
+            if bbox and bbox[0]<= x <=bbox[2] and bbox[1]<= y <=bbox[3]:
+                #print("정확하게 짚은 도형 아이디:",item)
+                self.shape1=item
+                break
+        self.now_tag=list(self.canvas.gettags(self.shape1))
+        if 'current' in self.now_tag:
+            self.now_tag.remove('current')
+
+        self.start_coords1=self.canvas.coords(self.shape1) #도형1 좌표 저장
+
+        self.s1sx=self.information_dic[self.shape1]["X"] #칩들의
+        self.s1sy=self.information_dic[self.shape1]["Y"] #기본 위치
+
+        self.shape1_startx=self.start_coords1[0] #도형1 처음x좌표
+        self.shape1_starty=self.start_coords1[1] #도형1 처음y좌표
+
+        chip.now_tag_dic[self.now_tag[0]]=self.clic_cnt #해당 도형의 태그와 그 도형의 클릭 카운트를 묶어서 딕셔너리로 만듦
+
+        if self.shape1_startx!=self.s1sx or self.shape1_starty!=self.s1sy:
+            self.clic_cnt=0
+            chip.now_tag_dic[self.now_tag[0]]=self.clic_cnt
+
+        else:
+            if len(chip.now_tag_dic)>=2: #다른 태그:클카 가 들어오면 기존의 것은 없앰
+                first_key=next(iter(chip.now_tag_dic))
+                #print(f"먼저 들어온 애:{first_key} 나가")
+                chip.now_tag_dic.pop(first_key)
+                if chip.now_tag_dic[self.now_tag[0]]>1: #근데 없애는 게 클카를 초기화 시키는 게 아니라서 따로 초기화 해야됨
+                    #print("너 이전에 들어온적 있구나 ",self.now_tag[0],"? 증거:",chip.now_tag_dic[self.now_tag[0]])
+                    self.clic_cnt=1
+                chip.now_tag_dic[self.now_tag[0]]=self.clic_cnt
+
+        print("클릭한 도형의 클릭 카운트:",chip.now_tag_dic)
+
+        self.x1=self.shape1_startx-self.img_width//2
+        self.y1=self.shape1_starty-self.img_height//2
+        self.x2=self.shape1_startx+self.img_width//2
+        self.y2=self.shape1_starty+self.img_height//2
+
+        chip.coord_list[0]=self.x1
+        chip.coord_list[1]=self.y1
+        chip.coord_list[2]=self.x2
+        chip.coord_list[3]=self.y2
+        chip.shape_id=self.shape1
+        #self.teduri=self.canvas.create_oval(self.x1-teduri,self.y1-teduri,self.x2+teduri,self.y2+teduri,outline="blue",width=10,tags="teduri")
+        #self.canvas.itemconfigure(self.teduri,state="hidden")
+
+        #if chip.clic_cnt%2!=0:
+        #    self.canvas.itemconfigure(self.teduri,state="normal")
+        #    print(f"teduri: {self.teduri}, 좌표: {self.canvas.coords(self.teduri)}")
+        #elif chip.clic_cnt%2==0:
+        #    #self.canvas.delete(self.teduri)
+        #    self.canvas.itemconfigure(self.teduri,state="hidden")
+
+        #print(f"s1sx: {self.s1sx}, s1sy: {self.s1sy}")
+        #print(f"x1:{self.x1}, y1:{self.y1}, x2:{self.x2}, y2:{self.y2}")
+        #print(f"s1: {self.shape1}") 
+        #print(f"s1 startx: {self.shape1_startx}, s1 starty: {self.shape1_starty}")
+
+    def moving(self,ev):
+        if chip.dealing_start==True or chip.stop_sit==True:
+            return
+        self.nt=list(self.canvas.gettags(chip.shape_id))
+        if 'current' in self.nt:
+            self.nt.remove('current')
+
+        self.cc=chip.now_tag_dic[self.nt[0]]#moving은 마지막으로 생성된 칩만 기억하기 때문에 이렇게 클래스 변수로 만들어서 클카 검사를 해야 함
+        print(f"도형 {chip.shape_id}의 클릭 카운트:{self.cc}")
+        if self.cc%2==0:
+            #print("칩이 선택되지 않았음")
+            return
+        if (240<=ev.x<=570 and 530<=ev.y<=790)\
+        or(590<=ev.x<=840 and 530<=ev.y<=790)\
+        or(860<=ev.x<=1200 and 530<=ev.y<=790)\
+        or(60<=ev.x<=230 and 570<=ev.y<=790)\
+        or(1210<=ev.x<=1370 and 530<=ev.y<=790):
+            if chip.seed_money<chip.value_dic[self.nt[0]]:
+                print("잔고 부족. 현재 잔고: ",chip.seed_money,"원")
+                self.canvas.itemconfig(self.bacara.red_text,text=f"잔고 부족. 현재 잔고: {chip.seed_money:,}")
+                self.text_timer()
+                return
+            if chip.total_betting+chip.value_dic[self.nt[0]]>100000000:
+                print("최대 베팅 금액 도달")
+                self.canvas.itemconfig(self.bacara.red_text,text=f"최대 베팅 금액 도달")
+                self.text_timer()
+                return
+            chip.seed_money=chip.seed_money-chip.value_dic[self.nt[0]]
+            chip.total_betting=chip.total_betting+chip.value_dic[self.nt[0]]
+            print("잔고:",chip.seed_money,"원")
+            self.canvas.itemconfig(self.bacara.seed_money_text,text=f"{chip.seed_money:,}₩")
+            self.canvas.itemconfig(self.bacara.total_betting_money,text=f"{chip.total_betting:,}₩")
+            self.shape_coord=self.canvas.coords(chip.shape_id)
+        
+            #print("움직일 이미지 아이디:",chip.shape_id,"현재 이미지 중점좌표 x:",self.shape_coord[0],"y:",self.shape_coord[1])
+
+            self.destination_x=ev.x-self.shape_coord[0]
+            self.destination_y=ev.y-self.shape_coord[1]
+
+            #print("dx",self.destination_x)
+            #print("dy",self.destination_y)
+
+            self.distance=((self.destination_x)**2+(self.destination_y)**2)**0.5
+            self.one_step=20
+            self.steps=int(self.distance/self.one_step)
+
+            self.sx=self.destination_x/self.steps
+            self.sy=self.destination_y/self.steps
+
+            self.move()
+        else:
+            print("베팅판만 클릭 가능")
+    def move(self):
+        if self.steps==0:
+            self.delta_coords1=self.canvas.coords(chip.shape_id)
+            chip.x,chip.y=self.delta_coords1 
+            #self.chip_img_list=[]
+            img,value=self.information_dic[chip.shape_id]["img_value"]
+            self.chip_img=Image.open(img)
+            self.chip_img=ImageTk.PhotoImage(self.chip_img)
+            #self.chip_img_list.append(self.chip_img)
+            #print(f"움직인 놈 신상 ID:{chip.shape_id}, 세부정보: {self.information_dic[chip.shape_id]}")
+            print("움직인 후 위치  x:",self.x,",  y:",self.y)
+            print(self.chip_img)
+
+            x=self.information_dic[chip.shape_id]["X"]
+            y=self.information_dic[chip.shape_id]["Y"]
+
+            self.obj_chip=chip(self.canvas,self.chip_img,x,y,value,self.bacara)
+            self.chip_obj_dic[self.obj_chip.image_item]=self.obj_chip
+            self.information_dic[self.obj_chip.image_item]=self.information_dic[chip.shape_id]
+            self.betting_check(chip.shape_id)
+            chip.shape_id=self.obj_chip.image_item#새로 생성된 칩 객체를 현재 id로 넣어서 움직일 수 있게 만듦
+
+            return
+
+        self.canvas.move(chip.shape_id,self.sx,self.sy)
+        self.steps=self.steps-1
+
+        self.canvas.after(10,self.move)
+
+    def drag_move(self,ev):
+        if chip.dealing_start==True or chip.stop_sit==True:
+            return
+        if (60<=self.shape1_startx<=1370 and 530<=self.shape1_starty<=790):
+            self.shape1_deltax=ev.x-self.shape1_startx#이동거리 계산
+            self.shape1_deltay=ev.y-self.shape1_starty#이동거리 계산
+
+            self.canvas.move(self.shape1,self.shape1_deltax,self.shape1_deltay)
+
+            self.shape1_startx=ev.x #값
+            self.shape1_starty=ev.y #업뎃
+        
+        else:
+            if self.shape1 in chip.pl_list or\
+            self.shape1 in chip.ban_list or\
+            self.shape1 in chip.tie_list or\
+            self.shape1 in chip.bp_list or\
+            self.shape1 in chip.pp_list:
+                self.canvas.coords(self.shape1,chip.x,chip.y)
+                print(f"베팅판을 벗어날 수는 없어. (현재 칩 위치:x:{chip.x}.],y:{chip.y})")
+            else:
+                print("드래그 방식은 이제 베팅판-베팅판 간의 이동에만 사용할 수 있습니다.")
+                return
+
+    def regeneration(self,ev):
+        if chip.dealing_start==True or chip.stop_sit==True:
+            return
+
+        #self.delta_coords1=self.canvas.coords(self.shape1)
+        #self.dcx,self.dcy=self.delta_coords1
+        #print(f"dcx:{self.dcx}, dcy:{self.dcy}")
+        #self.chip_img_list=[]
+        #img,value=self.information_dic[self.shape1]["img_value"]
+        #self.chip_img=Image.open(img)
+        #self.chip_img=ImageTk.PhotoImage(self.chip_img)
+        #self.chip_img_list.append(self.chip_img)
+        #print(f"움직인 놈 신상 ID:{self.shape1}, 세부정보: {self.information_dic[self.shape1]}")
+        #print("움직인 후 위치  dcx:",self.dcx,",  dcy:",self.dcy)
+        #print(self.chip_img)
+
+        #x=self.information_dic[self.shape1]["X"]
+        #y=self.information_dic[self.shape1]["Y"]
+        #self.obj_chip=chip(self.canvas,self.chip_img,x,y,value)
+        #self.chip_obj_dic[self.obj_chip.image_item]=self.obj_chip
+        #self.information_dic[self.obj_chip.image_item]=self.information_dic[self.shape1]
+        #print("cc=",chip.now_tag_dic[self.now_tag[0]])
+        #chip.now_tag_dic[self.now_tag[0]]=0
+        #print("클릭 카운트가 0이 됨")
+        self.betting_check(chip.shape_id)
+
+    def betting_check(self,si):
+        self.shape_id=si
+        self.x,self.y=self.canvas.coords(self.shape_id)
+        chip.x,chip.y=self.x,self.y
+        chip.value_dic={"5K":5000,
+                        "20K":20000,
+                        "100K":100000,
+                        "200K":200000,
+                        "1M":1000000,
+                        "5M":5000000,
+                        "20M":20000000}
+        
+        if 240<=self.x<=570 and 530<=self.y<=790: #플레이어           
+            tag=list(self.canvas.gettags(self.shape_id))
+            if 'current' in tag:
+                tag.remove('current')
+
+            if self.shape_id not in chip.pl_list:
+                chip.pl_list.append(self.shape_id)
+                chip.player_betting_amount+=chip.value_dic[tag[0]]
+
+            if self.shape_id in chip.tie_list:
+                chip.tie_list.remove(self.shape_id)
+                chip.tie_betting_amount-=chip.value_dic[tag[0]]
+            if self.shape_id in chip.ban_list:
+                chip.ban_list.remove(self.shape_id)
+                chip.banker_betting_amount-=chip.value_dic[tag[0]]
+            if self.shape_id in chip.pp_list:
+                chip.pp_list.remove(self.shape_id)
+                chip.player_pair_betting_amount-=chip.value_dic[tag[0]]
+            if self.shape_id in chip.bp_list:
+                chip.bp_list.remove(self.shape_id)
+                chip.banker_pair_betting_amount-=chip.value_dic[tag[0]]
+
+            print(f"도형{self.shape_id}, ({self.x},{self.y})이 플레이어에 베팅됨. 플레이어 총 베팅금액:{chip.player_betting_amount}원")
+
+        if 590<=self.x<=840 and 530<=self.y<=790: #타이
+            tag=list(self.canvas.gettags(self.shape_id))
+            if 'current' in tag:
+                tag.remove('current')
+        
+            if self.shape_id not in chip.tie_list:
+                chip.tie_list.append(self.shape_id)
+                chip.tie_betting_amount+=chip.value_dic[tag[0]]
+
+            if self.shape_id in chip.pl_list:
+                chip.pl_list.remove(self.shape_id)
+                chip.player_betting_amount-=chip.value_dic[tag[0]]
+            if self.shape_id in chip.ban_list:
+                chip.ban_list.remove(self.shape_id)
+                chip.banker_betting_amount-=chip.value_dic[tag[0]]
+            if self.shape_id in chip.pp_list:
+                chip.pp_list.remove(self.shape_id)
+                chip.player_pair_betting_amount-=chip.value_dic[tag[0]]
+            if self.shape_id in chip.bp_list:
+                chip.bp_list.remove(self.shape_id)
+                chip.banker_pair_betting_amount-=chip.value_dic[tag[0]]
+
+            print(f"도형{self.shape_id}, ({self.x},{self.y})이 타이에 베팅됨. 타이 총 베팅금액:{chip.tie_betting_amount}원")
+
+        if 860<=self.x<=1200 and 530<=self.y<=790: #뱅커
+            tag=list(self.canvas.gettags(self.shape_id))
+            if 'current' in tag:
+                tag.remove('current')
+            if self.shape_id not in chip.ban_list:
+                chip.ban_list.append(self.shape_id)
+                chip.banker_betting_amount+=chip.value_dic[tag[0]]
+
+            if self.shape_id in chip.tie_list:
+                chip.tie_list.remove(self.shape_id)
+                chip.tie_betting_amount-=chip.value_dic[tag[0]]
+            if self.shape_id in chip.pl_list:
+                chip.pl_list.remove(self.shape_id)
+                chip.player_betting_amount-=chip.value_dic[tag[0]]
+            if self.shape_id in chip.pp_list:
+                chip.pp_list.remove(self.shape_id)
+                chip.player_pair_betting_amount-=chip.value_dic[tag[0]]
+            if self.shape_id in chip.bp_list:
+                chip.bp_list.remove(self.shape_id)
+                chip.banker_pair_betting_amount-=chip.value_dic[tag[0]]    
+            print(f"도형{self.shape_id}, ({self.x},{self.y})이 뱅커에 베팅됨. 뱅커 총 베팅금액:{chip.banker_betting_amount}원")
+
+        if 60<=self.x<=230 and 570<=self.y<=790: #플레이어 페어
+            tag=list(self.canvas.gettags(self.shape_id))
+            if 'current' in tag:
+                tag.remove('current')
+
+            if self.shape_id not in chip.pp_list:
+                chip.pp_list.append(self.shape_id)
+                chip.player_pair_betting_amount+=chip.value_dic[tag[0]]
+
+            if self.shape_id in chip.tie_list:
+                chip.tie_list.remove(self.shape_id)
+                chip.tie_betting_amount-=chip.value_dic[tag[0]]
+            if self.shape_id in chip.ban_list:
+                chip.ban_list.remove(self.shape_id)
+                chip.banker_betting_amount-=chip.value_dic[tag[0]]
+            if self.shape_id in chip.pl_list:
+                chip.pl_list.remove(self.shape_id)
+                chip.player_betting_amount-=chip.value_dic[tag[0]]
+            if self.shape_id in chip.bp_list:
+                chip.bp_list.remove(self.shape_id)
+                chip.banker_pair_betting_amount-=chip.value_dic[tag[0]]   
+            print(f"도형{self.shape_id}, ({self.x},{self.y})이 플레이어 페어에 베팅됨. 플레이어 페어 총 베팅금액:{chip.player_pair_betting_amount}원")
+
+        if 1210<=self.x<=1370 and 530<=self.y<=790: #뱅커 페어
+            tag=list(self.canvas.gettags(self.shape_id))
+            if 'current' in tag:
+                tag.remove('current')
+
+            if self.shape_id not in chip.bp_list:
+                chip.bp_list.append(self.shape_id)
+                chip.banker_pair_betting_amount+=chip.value_dic[tag[0]]
+
+
+            if self.shape_id in chip.tie_list:
+                chip.tie_list.remove(self.shape_id)
+                chip.tie_betting_amount-=chip.value_dic[tag[0]]
+
+            if self.shape_id in chip.ban_list:
+                chip.ban_list.remove(self.shape_id)
+                chip.banker_betting_amount-=chip.value_dic[tag[0]]
+
+            if self.shape_id in chip.pp_list:
+                chip.pp_list.remove(self.shape_id)
+                chip.player_pair_betting_amount-=chip.value_dic[tag[0]]
+
+            if self.shape_id in chip.pl_list:
+                chip.pl_list.remove(self.shape_id)
+                chip.player_betting_amount-=chip.value_dic[tag[0]]
+
+            print(f"도형{self.shape_id}, ({self.x},{self.y})이 뱅커 페어에 베팅됨. 뱅커 페어 총 베팅금액:{chip.banker_pair_betting_amount}원")
+        else:
+            print("그 어디에도 안 들어있어")
+
+    def text_timer(self):
+        if self.numero==-1:
+            self.canvas.itemconfig(self.bacara.red_text,text="")
+            window.after_cancel(self.after_id)
+            self.numero=3
+            return
+        self.after_id=window.after(1000,self.text_timer)
+        self.numero-=1
+
+class play_game(chip):
+    PLAYER_WIN=0
+    BANKER_WIN=0
+    TIE_WIN=0
+    PPAIR_WIN=0
+    BPAIR_WIN=0
+    def __init__(self,canvas,img_list,value,trd_card_list,pic_type_dic,b):
+        self.canvas=canvas
+        self.bacara=b
+        self.betting_time=12
+        self.card_img_list=img_list
+        self.card_value=value
+        self.pic_type_dic=pic_type_dic
+        self.bacara.game_stop_button["command"]=self.stop
+        #self.bacara.continue_button["command"]=self.Continue
+        #self.game_stop_button_id=self.bacara.game_stop_button_id
+        #self.continue_button_id=self.bacara.continue_button_id
+
+        self.player_score=0
+        self.banker_score=0
+
+        self.pl_trd_card_id=None
+        self.ban_trd_card_id=None
+        
+        self.trd_card_list=trd_card_list
+        #self.trd_pic_list=trd_pic_list
+        self.timer_text=self.canvas.create_text(715,230,text="",font=("Helvetica",60,"bold"),fill="white")
+        self.player_score_text=self.canvas.create_text(250,500,text=f"{self.player_score}",font=("Helvetica",40,"bold"),fill="white")
+        self.banker_score_text=self.canvas.create_text(1190,500,text=f"{self.player_score}",font=("Helvetica",40,"bold"),fill="white")
+
+    def Betting_time(self):
+        if self.betting_time==-1:
+            self.canvas.itemconfig(self.timer_text,state="hidden")
+            chip.dealing_start=True
+            self.bacara.game_stop_button["state"]="disabled"
+            self.card_dealing()
+            return
+        self.canvas.itemconfig(self.timer_text,text=self.betting_time,state="normal")
+        self.betting_time-=1
+        self.after_id=window.after(1000,self.Betting_time)
+
+    def card_dealing(self):
+        card_coords=[(550,100),(850,100),(420,100),(980,100)]
+        self.start_cards_choice=[random.choice(self.card_img_list) for _ in range(4)] #랜덤으로 4장 뽑음
+        self.dealing_check=False
+        self.player_total=0
+        self.banker_total=0
+        self.player_natural=False
+        self.banker_natural=False
+        self.cards=[]
+        self.pl_trd_card=None
+        self.ban_trd_card=None
+
+        cnt=1
+        for (x,y),card in zip(card_coords, self.start_cards_choice):
+            card_id=self.canvas.create_image(x,y,image=card)
+            self.cards.append(card_id) #뽑힌 카드들의 아이디를 리스트로 저장
+            print("카드 점수:",self.card_value[card])
+
+            for i in range(33):
+                self.canvas.move(card_id,0,7)
+                window.update()
+                time.sleep(0.015)
+
+            if cnt%2==1:
+                self.player_score+=self.card_value[card]
+                if self.player_score>9:
+                    self.player_score%=10
+                self.canvas.itemconfigure(self.player_score_text,text=f"{self.player_score}")
+                cnt+=1               
+
+            elif cnt%2==0:
+                self.banker_score+=self.card_value[card]
+                if self.banker_score>9:
+                    self.banker_score%=10
+                self.canvas.itemconfigure(self.banker_score_text,text=f"{self.banker_score}")
+                cnt+=1               
+                
+
+        self.dealing_check=True
+        p1=self.card_value[self.start_cards_choice[0]]
+        p2=self.card_value[self.start_cards_choice[2]]
+        b1=self.card_value[self.start_cards_choice[1]]
+        b2=self.card_value[self.start_cards_choice[3]]
+        self.player_total=p1+p2
+        self.banker_total=b1+b2
+        
+        if (p1==0 and p2==0) and (self.pic_type_dic[self.start_cards_choice[0]]==self.pic_type_dic[self.start_cards_choice[2]]):
+            play_game.PPAIR_WIN=1
+            print("플레이어의",self.pic_type_dic[self.start_cards_choice[0]],",",self.pic_type_dic[self.start_cards_choice[2]],"으로 같은 페어")
+        elif p1==p2 and(p1!=0 and p2!=0):
+            play_game.PPAIR_WIN=1
+            print("플레이어의",p1,",",p2,"으로 같은 페어")
+
+        if self.player_total>=10:
+            self.player_total=self.player_total%10
+        print("플레이어 점수: ",self.player_total)
+
+
+        if (b1==0 and b2==0) and (self.pic_type_dic[self.start_cards_choice[1]]==self.pic_type_dic[self.start_cards_choice[3]]):
+            play_game.BPAIR_WIN=1 #점수가 같거나 그림이 같으면 페어
+            print("뱅커의",self.pic_type_dic[self.start_cards_choice[1]],",",self.pic_type_dic[self.start_cards_choice[3]],"으로 같은 그림 페어")
+        elif b1==b2 and(b1!=0 and b2!=0):
+            play_game.BPAIR_WIN=1
+            print("뱅커의",b1,",",b2,"으로 같은 페어")
+
+        if self.banker_total>=10:
+            self.banker_total=self.banker_total%10
+        print("뱅커 점수: ",self.banker_total)
+
+        if self.player_total>=8:
+            self.player_natural=True
+        if self.banker_total>=8:
+            self.banker_natural=True
+
+        #플레이어 추가 카드 지급
+        if self.banker_natural==False:
+            if 0<=self.player_total<=5:
+                print("플레이어 추가카드 지급")
+                self.pl_trd_card=random.choice(self.trd_card_list)
+                self.pl_trd_card_id=self.canvas.create_image(100,370,image=self.pl_trd_card)
+                self.animate_card(self.pl_trd_card_id,7,22)
+              
+                self.player_total+=self.card_value[self.pl_trd_card]
+                if self.player_total>=10:
+                    self.player_total=self.player_total%10      
+                print("플레이어 추가카드 점수:",self.card_value[self.pl_trd_card])          
+                print("플레이어 총 점수: ",self.player_total) 
+                self.canvas.itemconfigure(self.player_score_text,text=f"{self.player_total}")      
+        #뱅커 추가 카드 지급
+        
+        if self.player_natural==False:
+            if self.banker_total<3:
+                print("뱅커 추가카드 지급(뱅커 두 장 카드 합 3미만)")
+                self.ban_trd_card=random.choice(self.trd_card_list)
+                self.ban_trd_card_id=self.canvas.create_image(1350,370,image=self.ban_trd_card)
+                self.animate_card(self.ban_trd_card_id,-7,28)
+
+                self.banker_total+=self.card_value[self.ban_trd_card]
+                if self.banker_total>=10:
+                    self.banker_total=self.banker_total%10
+                print("뱅커 추가카드 점수:",self.card_value[self.ban_trd_card]) 
+                print("뱅커 총 점수:",self.banker_total)
+                self.canvas.itemconfigure(self.banker_score_text,text=f"{self.banker_total}")
+
+            elif self.pl_trd_card!=None:
+                if self.banker_total==3 and self.card_value[self.pl_trd_card]!=8:
+                    self.ban_trd_card=random.choice(self.trd_card_list)
+                    self.ban_trd_card_id=self.canvas.create_image(1350,370,image=self.ban_trd_card)
+                    self.animate_card(self.ban_trd_card_id,-7,28) 
+                    print("뱅커 추가카드 지급 (뱅커 2장 합: 3, 플레이어 추가카드 8아님)")
+                    self.banker_total+=self.card_value[self.ban_trd_card]
+                    if self.banker_total>=10:
+                        self.banker_total=self.banker_total%10
+                    print("뱅커 추가카드 점수:",self.card_value[self.ban_trd_card])
+                    print("뱅커 총 점수:",self.banker_total)
+                    self.canvas.itemconfigure(self.banker_score_text,text=f"{self.banker_total}")
+
+                elif self.banker_total==4 and 2<=self.card_value[self.pl_trd_card]<=7:
+                    self.ban_trd_card=random.choice(self.trd_card_list)
+                    self.ban_trd_card_id=self.canvas.create_image(1350,370,image=self.ban_trd_card)
+                    self.animate_card(self.ban_trd_card_id,-7,28)
+                    print("뱅커 추가카드 지급 (뱅커 2장 합: 4, 플레이어 추가카드가 2~7임)")
+                    self.banker_total+=self.card_value[self.ban_trd_card]
+                    if self.banker_total>=10:
+                        self.banker_total=self.banker_total%10
+                    print("뱅커 추가카드 점수:",self.card_value[self.ban_trd_card])
+                    print("뱅커 총 점수:",self.banker_total)
+                    self.canvas.itemconfigure(self.banker_score_text,text=f"{self.banker_total}")
+
+                elif self.banker_total==5 and 4<=self.card_value[self.pl_trd_card]<=7:
+                    self.ban_trd_card=random.choice(self.trd_card_list)
+                    self.ban_trd_card_id=self.canvas.create_image(1350,370,image=self.ban_trd_card)                
+                    self.animate_card(self.ban_trd_card_id,-7,28)
+                    print("뱅커 추가카드 지급 (뱅커 2장 합: 5, 플레이어 추가카드 4~7)")
+                    self.banker_total+=self.card_value[self.ban_trd_card]
+                    if self.banker_total>=10:
+                        self.banker_total=self.banker_total%10
+                    print("뱅커 추가카드 점수:",self.card_value[self.ban_trd_card])
+                    print("뱅커 총 점수:",self.banker_total)
+                    self.canvas.itemconfigure(self.banker_score_text,text=f"{self.banker_total}")
+
+                elif self.banker_total==6 and 6<=self.card_value[self.pl_trd_card]<=7:
+                    self.ban_trd_card=random.choice(self.trd_card_list)
+                    self.ban_trd_card_id=self.canvas.create_image(1350,370,image=self.ban_trd_card)
+                    self.animate_card(self.ban_trd_card_id,-7,28)               
+                    print("뱅커 추가카드 지급 (뱅커 2장 합: 6, 플레이어 추가카드 6~7)")
+                    self.banker_total+=self.card_value[self.ban_trd_card]
+                    if self.banker_total>=10:
+                        self.banker_total=self.banker_total%10
+                    print("뱅커 추가카드 점수:",self.card_value[self.ban_trd_card])
+                    print("뱅커 총 점수:",self.banker_total)
+                    self.canvas.itemconfigure(self.banker_score_text,text=f"{self.banker_total}")
+        self.winner_determination()
+
+    def winner_determination(self):
+        self.pl_reward=0
+        self.ban_reward=0
+        self.tie_reward=0
+        self.pp_reward=0
+        self.bp_reward=0
+        self.total_reward=0
+
+        if self.player_total>self.banker_total:
+            print("플레이어 승리")
+            play_game.PLAYER_WIN=1
+            self.win_box=self.canvas.create_rectangle(490,60,940,120,fill="blue")
+            self.win_boxtext=self.canvas.create_text(715,90,text="플레이어",font=("Helveticaa",30,("bold")),fill="white")
+            self.win_boxline1=self.canvas.create_line(490,60,940,60,fill="white",width=5)
+            self.win_boxline2=self.canvas.create_line(490,120,940,120,fill="white",width=5)
+            if chip.player_betting_amount>0 and play_game.PLAYER_WIN==1:
+                self.pl_reward=chip.player_betting_amount*2
+                
+                print("딴 금액(플레이어)",self.pl_reward)
+
+        if self.banker_total>self.player_total:
+            print("뱅커승리")
+            play_game.BANKER_WIN=1
+            self.win_box=self.canvas.create_rectangle(490,60,940,120,fill="red")
+            self.win_boxtext=self.canvas.create_text(715,90,text="뱅커",font=("Helveticaa",30,("bold")),fill="white")
+            self.win_boxline1=self.canvas.create_line(490,60,940,60,fill="white",width=5)
+            self.win_boxline2=self.canvas.create_line(490,120,940,120,fill="white",width=5)
+            if chip.banker_betting_amount>0 and play_game.BANKER_WIN==1:
+                self.ban_reward=chip.banker_betting_amount*1.95
+                self.ban_reward=int(self.ban_reward)
+                print("딴 금액(뱅커)",self.ban_reward)
+            
+        if self.player_total==self.banker_total:
+            print("타이")
+            play_game.TIE_WIN=1
+            self.win_box=self.canvas.create_rectangle(490,60,940,120,fill="#006600")
+            self.win_boxtext=self.canvas.create_text(715,90,text="무",font=("Helveticaa",30,("bold")),fill="white")
+            self.win_boxline1=self.canvas.create_line(490,60,940,60,fill="white",width=5)
+            self.win_boxline2=self.canvas.create_line(490,120,940,120,fill="white",width=5)
+            if chip.tie_betting_amount>0 and play_game.TIE_WIN==1:
+                self.tie_reward=chip.tie_betting_amount*8
+                print("딴 금액(타이)",self.tie_reward)
+            elif chip.tie_betting_amount==0 and play_game.TIE_WIN==1:
+                print("타이(무승부. 베팅금 돌려받음)")
+                chip.seed_money=chip.seed_money+(chip.player_betting_amount+chip.banker_betting_amount)
+                print("플레:",chip.player_betting_amount)
+                print("뱅커:",chip.banker_betting_amount)
+                print("시드머니:",chip.seed_money)
+            elif play_game.TIE_WIN==1 and (chip.player_betting_amount==0 and chip.banker_betting_amount==0):
+                print("타이(무승부)")
+
+
+        if play_game.PPAIR_WIN==1:
+            print("플레이어 페어")
+            if chip.player_pair_betting_amount>0 and play_game.PPAIR_WIN==1:
+                self.pp_reward=chip.player_pair_betting_amount*11
+                print("딴 금액(플레이어 페어)",self.pp_reward)
+        if play_game.BPAIR_WIN==1:
+            if chip.banker_pair_betting_amount>0 and play_game.BPAIR_WIN==1:
+                self.bp_reward=chip.banker_pair_betting_amount*11
+                print("딴 금액(뱅커 페어)",self.bp_reward)
+
+        self.total_reward=self.pl_reward+self.ban_reward+self.tie_reward+self.pp_reward+self.bp_reward
+        chip.seed_money+=self.total_reward
+        print("시이드머니:",chip.seed_money)
+        self.canvas.itemconfigure(self.bacara.seed_money_text,text=f"{chip.seed_money:,}₩")
+
+        if self.total_reward>0:
+            self.total_reward_text=self.canvas.create_text(720,160,text=f"{self.total_reward:,}₩",font=("Helvetica",40,"bold"),fill="#ffcc00")
+            print("총 배당금:",self.total_reward)
+        self.next_game_timer=5
+        self.Next_game_timer()
+
+    def animate_card(self,card_id,dx,steps):
+        for i in range(steps):
+            self.canvas.move(card_id,dx,0)
+            window.update()
+            time.sleep(0.02)
+
+    def Next_game_timer(self):
+        if self.next_game_timer==-1:
+            self.canvas.itemconfig(self.timer_text,state="hidden")
+            self.next_game()
+            return
+        self.canvas.itemconfig(self.timer_text,text=self.next_game_timer,state="normal")
+        self.next_game_timer-=1
+        self.after_id=window.after(1000,self.Next_game_timer)
+        
+    def next_game(self):
+        if chip.pl_list:
+            for i in chip.pl_list:
+                self.canvas.delete(i)
+        if chip.tie_list:
+            for i in chip.tie_list:
+                self.canvas.delete(i)           
+        if chip.ban_list:
+            for i in chip.ban_list:
+                self.canvas.delete(i)
+        if chip.pp_list:
+            for i in chip.pp_list:
+                self.canvas.delete(i) 
+        if chip.bp_list:
+            for i in chip.bp_list:
+                self.canvas.delete(i)                 
+
+        for i in self.cards:
+            self.canvas.delete(i) #뽑혔던 카드들 삭제
+        if self.pl_trd_card_id:
+            self.canvas.delete(self.pl_trd_card_id) #추가 카드들도 있으면 삭제
+        if self.ban_trd_card_id:
+            self.canvas.delete(self.ban_trd_card_id) #추가 카드들도 있으면 삭제
+
+        self.player_total=0
+        self.banker_total=0
+        self.player_score=0
+        self.banker_score=0
+
+        self.canvas.itemconfigure(self.player_score_text,text=f"{self.player_total}")
+        self.canvas.itemconfigure(self.banker_score_text,text=f"{self.banker_total}")
+        self.canvas.delete(self.win_box)
+        self.canvas.delete(self.win_boxtext)
+        self.canvas.delete(self.win_boxline1)
+        self.canvas.delete(self.win_boxline2)        
+
+        if self.total_reward>0:
+            self.canvas.delete(self.total_reward_text)
+        
+        self.total_reward=0
+        chip.player_betting_amount=0
+        chip.banker_betting_amount=0
+        chip.tie_betting_amount=0
+        chip.player_pair_betting_amount=0
+        chip.banker_pair_betting_amount=0
+        play_game.PLAYER_WIN=0
+        play_game.BANKER_WIN=0
+        play_game.TIE_WIN=0
+        play_game.PPAIR_WIN=0
+        play_game.BPAIR_WIN=0
+        chip.total_betting=0
+        self.canvas.itemconfig(self.bacara.total_betting_money,text=f"{chip.total_betting:,}₩")
+
+        self.start_cards_choice.clear()
+        
+        self.betting_time=12
+        chip.dealing_start=False
+        self.bacara.game_stop_button['state'] = 'normal'
+        self.Betting_time()
+
+    def stop(self):
+        print("게임중지")
+        window.after_cancel(self.after_id)
+        chip.stop_sit=True
+        self.bacara.game_stop_button.destroy()
+        self.bacara.continue_button=Button(window,text="계속",command=self.Continue)
+        self.bacara.continue_button.grid(row=0,column=0,sticky="W")
+        #self.bacara.continue_button.grid(row=0,column=0,sticky="W")
+
+    def Continue(self):
+        print("계속할게")
+        self.after_id=window.after(1000,self.Betting_time)
+        chip.stop_sit=False
+        self.bacara.continue_button.destroy()
+        self.bacara.game_stop_button=Button(window,text="중지",command=self.stop)
+        self.bacara.game_stop_button.grid(row=0,column=0,sticky="W")
+
+class baccarat(Frame): #Frame을 상속 받고
+    def __init__(self,window): #baccarat의 객체에서 window를 받아서
+        super().__init__(window) #Frame을 그 window에다가 줌
+        self.canvas=Canvas(self,width=1500,height=2000,bg="green")#self.canvas를 상속받은 frame에다가 배치함
+        self.canvas.pack()
+        self.grid(row=1,column=0)
+        self.chips_dic={}
+        self.id_image_dic={} #칩 객체, 아이디 저장하는 딕셔너리
+
+        x=500
+        self.chip_image_list=[]
+        self.chip_value_list=[]
+
+        self.card_img_list=[] #처음 나눠줄 카드가 담긴 리스트
+        self.card_value={} #카드,카드 점수가 담긴 딕셔너리
+        self.trd_card_list=[] #추가카드로 나눠줄 카드가 담긴 리스트
+        self.pic_type_dic={} #그림카드의 페어조건을 판단하기 위해 만든 딕셔너리.(잭,퀸,킹)
+       # self.trd_pic_card_list=[]
+       # self.trd_card_value={}
+
+        chip_images=[("kara/5000.png","5K"),
+                     ("kara/20k.png","20K"),
+                     ("kara/100k.png","100K"),
+                     ("kara/200k.png","200K"),
+                     ("kara/1m.png","1M"),
+                     ("kara/5m.png","5M"),
+                     ("kara/20m.png","20M")]
+        
+        number_card_images=[("kara/다이아몬드2.png",2),
+                            ("kara/다이아몬드3.png",3),
+                            ("kara/다이아몬드4.png",4),
+                            ("kara/다이아몬드5.png",5),
+                            ("kara/다이아몬드6.png",6),
+                            ("kara/다이아몬드7.png",7),
+                            ("kara/다이아몬드8.png",8),
+                            ("kara/다이아몬드9.png",9),
+                            ("kara/다이아몬드10.png",10),
+                            ("kara/스페이드2.png",2),
+                            ("kara/스페이드3.png",3),
+                            ("kara/스페이드4.png",4),
+                            ("kara/스페이드5.png",5),
+                            ("kara/스페이드6.png",6),
+                            ("kara/스페이드7.png",7),
+                            ("kara/스페이드8.png",8),
+                            ("kara/스페이드9.png",9),
+                            ("kara/스페이드10.png",10),
+                            ("kara/클럽2.png",2),
+                            ("kara/클럽3.png",3),
+                            ("kara/클럽4.png",4),
+                            ("kara/클럽5.png",5),
+                            ("kara/클럽6.png",6),
+                            ("kara/클럽7.png",7),
+                            ("kara/클럽8.png",8),
+                            ("kara/클럽9.png",9),
+                            ("kara/클럽10.png",10),
+                            ("kara/하트2.png",2),
+                            ("kara/하트3.png",3),
+                            ("kara/하트4.png",4),
+                            ("kara/하트5.png",5),
+                            ("kara/하트6.png",6),
+                            ("kara/하트7.png",7),
+                            ("kara/하트8.png",8),
+                            ("kara/하트9.png",9),
+                            ("kara/하트10.png",10),]
+        
+        trd_card_image=[    ("kara/3다이아몬드2.png",2),
+                            ("kara/3다이아몬드3.png",3),
+                            ("kara/3다이아몬드4.png",4),
+                            ("kara/3다이아몬드5.png",5),
+                            ("kara/3다이아몬드6.png",6),
+                            ("kara/3다이아몬드7.png",7),
+                            ("kara/3다이아몬드8.png",8),
+                            ("kara/3다이아몬드9.png",9),
+                            ("kara/3다이아몬드10.png",10),
+                            ("kara/3스페이드2.png",2),
+                            ("kara/3스페이드3.png",3),
+                            ("kara/3스페이드4.png",4),
+                            ("kara/3스페이드5.png",5),
+                            ("kara/3스페이드6.png",6),
+                            ("kara/3스페이드7.png",7),
+                            ("kara/3스페이드8.png",8),
+                            ("kara/3스페이드9.png",9),
+                            ("kara/3스페이드10.png",10),
+                            ("kara/3클럽2.png",2),
+                            ("kara/3클럽3.png",3),
+                            ("kara/3클럽4.png",4),
+                            ("kara/3클럽5.png",5),
+                            ("kara/3클럽6.png",6),
+                            ("kara/3클럽7.png",7),
+                            ("kara/3클럽8.png",8),
+                            ("kara/3클럽9.png",9),
+                            ("kara/3클럽10.png",10),
+                            ("kara/3하트2.png",2),
+                            ("kara/3하트3.png",3),
+                            ("kara/3하트4.png",4),
+                            ("kara/3하트5.png",5),
+                            ("kara/3하트6.png",6),
+                            ("kara/3하트7.png",7),
+                            ("kara/3하트8.png",8),
+                            ("kara/3하트9.png",9),
+                            ("kara/3하트10.png",10)]
+        
+        trd_pic_img=[   ("kara/3다이아몬드잭.jpg",0,"잭"),
+                        ("kara/3다이아몬드퀸.jpg",0,"퀸"),
+                        ("kara/3다이아몬드킹.jpg",0,"킹"),
+                        ("kara/3스페이드잭.jpg",0,"잭"),
+                        ("kara/3스페이드퀸.jpg",0,"퀸"),
+                        ("kara/3스페이드킹.jpg",0,"킹"),
+                        ("kara/3클럽잭.jpg",0,"잭"),
+                        ("kara/3클럽퀸.jpg",0,"퀸"),
+                        ("kara/3클럽킹.jpg",0,"킹"),
+                        ("kara/3하트잭.jpg",0,"잭"),
+                        ("kara/3하트퀸.jpg",0,"퀸"),
+                        ("kara/3하트킹.jpg",0,"킹")]
+        
+        pic_card_image=[("kara/다이아몬드잭.jpg",0,"잭"),
+                        ("kara/다이아몬드퀸.jpg",0,"퀸"),
+                        ("kara/다이아몬드킹.jpg",0,"킹"),
+                        ("kara/스페이드잭.jpg",0,"잭"),
+                        ("kara/스페이드퀸.jpg",0,"퀸"),
+                        ("kara/스페이드킹.jpg",0,"킹"),
+                        ("kara/클럽잭.jpg",0,"잭"),
+                        ("kara/클럽퀸.jpg",0,"퀸"),
+                        ("kara/클럽킹.jpg",0,"킹"),
+                        ("kara/하트잭.jpg",0,"잭"),
+                        ("kara/하트퀸.jpg",0,"퀸"),
+                        ("kara/하트킹.jpg",0,"킹"),]
+        for img_path, value in chip_images:
+            chip_img=Image.open(img_path)
+            chip_img=ImageTk.PhotoImage(chip_img)
+            self.chip_image_list.append(chip_img) #Photo이미지객체로 만들어서 리스트에 저장
+            self.chip_value_list.append(value)
+
+        for ip,vl in number_card_images:
+            card_img=Image.open(ip)
+            card_img=ImageTk.PhotoImage(card_img)
+            self.card_img_list.append(card_img) #카드 경로 저장리스트
+            self.card_value[card_img]=vl #카드 이미지 경로와 카드값을 묶어서 딕셔너리 저장
+
+        for ip,vl in trd_card_image:
+            card_img=Image.open(ip)
+            card_img=ImageTk.PhotoImage(card_img)
+            self.trd_card_list.append(card_img)
+            self.card_value[card_img]=vl
+
+        for ip,vl,pic_type in pic_card_image:
+            card_img=Image.open(ip)
+            card_img=ImageTk.PhotoImage(card_img)
+            self.card_img_list.append(card_img)
+            self.card_value[card_img]=vl
+            self.pic_type_dic[card_img]=pic_type #그림카드 이미지 경로와 그림 이름을 묶어서 저장
+
+        for ip,vl,pic_type in trd_pic_img:
+            card_img=Image.open(ip)
+            card_img=ImageTk.PhotoImage(card_img)
+            self.trd_card_list.append(card_img)
+            self.card_value[card_img]=vl
+            self.pic_type_dic[card_img]=pic_type
+
+        #self.canvas.create_rectangle(1500,1100,0,0,fill="green")
+        
+        self.Player_board=self.canvas.create_rectangle(240,530,570,790,fill="blue")
+
+        self.Tie_board=self.canvas.create_rectangle(590,530,840,790,fill="#006600")
+
+        self.Banker_board=self.canvas.create_rectangle(860,530,1200,790,fill="red")
+
+        self.Player_pair_board=self.canvas.create_rectangle(60,530,230,790,fill="#003399")
+
+        self.Banker_pair_board=self.canvas.create_rectangle(1210,530,1370,790,fill="#990000")
+
+        self.Player_board_text=self.canvas.create_text(400,760,text="플레이어",fill="white",font=("",35,"bold"))
+        self.Tie_board_text=self.canvas.create_text(715,760,text="무",fill="white",font=("",35,"bold"))
+        self.Banker_board_text=self.canvas.create_text(1030,760,text="뱅커",fill="white",font=("",35,"bold"))
+        self.Player_pair_board_text=self.canvas.create_text(147,760,text="플레이어 페어",fill="white",font=("",26,"bold"))
+        self.banker_pair_board_text=self.canvas.create_text(1293,760,text="뱅커 페어",fill="white",font=("",26,"bold"))
+
+        self.player_text=self.canvas.create_text(380,160,text="PLAYER",fill="white",font=("Helvetica",60,"bold"))
+        self.banker_text=self.canvas.create_text(1050,160,text="BANKER",fill="white",font=("Helvetica",60,"bold"))
+        self.red_text=self.canvas.create_text(715,500,text="",fill="red",font=("Helvetica",20,"bold"))
+        y=848
+        for i in range(len(self.chip_image_list)):            
+            self.obj_chip=chip(self.canvas,self.chip_image_list[i],x,y,self.chip_value_list[i],self)
+            self.chips_dic[self.obj_chip.image_item]=self.obj_chip #칩 아이디와 칩 객체를 딕셔너리로 저장
+            self.id_image_dic[self.obj_chip.image_item]={"img_value":chip_images[i], #칩 이미지 아이디를 키로, 이미지,텍스트 튜플, x좌표,y좌표를 값으로 저장
+                                                     "X":x,
+                                                     "Y":y}
+            tag=self.chip_value_list[i]
+
+            self.canvas.tag_bind(tag,"<Button-1>",self.obj_chip.ready_move)
+            self.canvas.tag_bind(tag,"<B1-Motion>", self.obj_chip.drag_move)
+            self.canvas.tag_bind(tag,"<ButtonRelease-1>",self.obj_chip.regeneration)
+            self.canvas.bind("<Button-1>",lambda event, chip_obj=self.obj_chip:chip_obj.moving(event))
+
+            x=x+75
+            self.obj_chip.information_dic=self.id_image_dic
+            self.obj_chip.chip_obj_dic=self.chips_dic
+        
+        self.jango=self.canvas.create_text(90,840,text="잔고",font=("Helbetica",25,"bold"),fill="white")
+        self.seed_money_text=self.canvas.create_text(90,870,text=f"{self.obj_chip.seed_money:,}₩",font=("Helvetica",25,"bold"),fill="yellow")
+        self.total_betting_text=self.canvas.create_text(280,840,text="총 베팅금",font=("Helvetica",25,"bold"),fill="white")
+        self.total_betting_money=self.canvas.create_text(280,870,text=f"0₩",font=("Helvetica",25,"bold"),fill="yellow")
+        self.game_stop_button=Button(window,text="중지")
+        self.game_stop_button.grid(row=0,column=0,sticky="W")
+
+        print("캔버스에 존재하는 모든 태그:")
+        for item_id in self.canvas.find_all():
+            print(f"아이템 ID={item_id}, 태그={self.canvas.gettags(item_id)}")
+
+        for key,value in self.id_image_dic.items():
+            print(f"{key}:{value}")
+        for tag in self.chip_value_list:
+            print(f"태그 '{tag}'에 연결된 아이템: {self.canvas.find_withtag(tag)}")
+
+        game=play_game(self.canvas,self.card_img_list,self.card_value,self.trd_card_list,self.pic_type_dic,self)
+        game.Betting_time()
+
+window=Tk()
+bacara=baccarat(window)
+window.mainloop()
